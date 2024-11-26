@@ -5,25 +5,32 @@
 # See the README.md file for more details.
 # This is Public Domain software, see the LICENCE file
 
+
+import click
 from requests_cache import CachedSession
 from datetime import timedelta
 import great_circle_calculator.great_circle_calculator as gcc
 import maidenhead as mh
 import sys
 
-def main():
-    # Parse command-line arguments
-    if not 4 <= len(sys.argv) <= 5:
-        print("The script must be run with exactly 3 or 4 command-line arguments. See README for details.")
-        sys.exit()
-
-    num_parks = int(sys.argv[1])
-    callsign = sys.argv[2]
-    if len(sys.argv) == 5:
-        lat = float(sys.argv[3])
-        lon = float(sys.argv[4])
+@click.command()
+@click.option('-n', 'num_parks', help='Number of parks to display', default=10)
+@click.option('-c', 'callsign', help='Callsign to display', required=True)
+@click.option('-lat', 'lat', help='Latitude of location')
+@click.option('-lon', 'lon', help='Longitude of location')
+@click.option('-grid', 'grid', help='Gridsquare of location')
+@click.option('-unit', 'unit',
+              type=click.Choice(['km', 'mi'], case_sensitive=False), help='Enter units in km or ft', default='km')
+def main(num_parks, callsign, lat, lon, grid, unit):
+    if lat or lon:
+        lat = float(lat)
+        lon = float(lon)
     else:
-        lat, lon = mh.to_location(sys.argv[3])
+        lat, lon = mh.to_location(grid)
+    if 'km' in unit:
+        user_unit = 'kilometers'
+    if 'mi' in unit:
+        user_unit = 'miles'
 
     # Fetch list of parks within +-1 degree lat/lon of your location.
     session = CachedSession("pota-local-progress-cache", expire_after=timedelta(days=1))
@@ -35,7 +42,7 @@ def main():
     home = (lon, lat)
     for park in parks:
         park_loc = (park["geometry"]["coordinates"][0], park["geometry"]["coordinates"][1])
-        park["properties"]["distance_from_home"] = gcc.distance_between_points(home, park_loc, unit='kilometers',
+        park["properties"]["distance_from_home"] = gcc.distance_between_points(home, park_loc, unit=user_unit,
                                                                             haversine=True)
 
     # Sort parks by distance from you, and limit to the number we are insterested in
@@ -75,7 +82,7 @@ def main():
         limited_len_name = (park["properties"]["name"][:43] + '..') if len(park["properties"]["name"]) > 43 else \
             park["properties"]["name"]
         print(status_text_ansi + " | "
-            + ("{:.1f}".format(park["properties"]["distance_from_home"]) + " km").rjust(8) + " | "
+            + ("{:.1f}".format(park["properties"]["distance_from_home"]) + f" {unit}").rjust(8) + " | "
             + park["properties"]["reference"].center(9) + " | " + limited_len_name)
 
 if __name__ == "__main__":
